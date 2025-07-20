@@ -1,10 +1,10 @@
-# Core FastAPI dependencies
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 sqlmodel
 aiosqlite
 fastcrud
+
 # Email functionality
 email-validator>=2.1.0
 fastapi-mail>=1.4.0
@@ -23,9 +23,13 @@ alembic>=1.12.0
 jinja2>=3.1.2
 python-dotenv>=1.0.0
 pydantic>=2.5.0
-
-# Configuration
 starlette>=0.27.0
+
+# Streamlit for frontend
 streamlit>=1.28.0
 pandas>=1.5.0
-python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Additional utilities
+python-multipart>=0.0.6
+websockets>=11.0.2
