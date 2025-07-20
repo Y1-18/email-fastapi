@@ -26,3 +26,6 @@ pydantic>=2.5.0
 
 # Configuration
 starlette>=0.27.0
+streamlit>=1.28.0
+pandas>=1.5.0
+python-dotenv>=1.0.0
