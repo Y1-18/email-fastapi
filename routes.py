@@ -14,9 +14,7 @@ from schema import EmailRequest, EmailResponse, EmailLogCreate, EmailLogRead
 current_file_dir = os.path.dirname(os.path.realpath(__file__))
 env_path = os.path.join(current_file_dir, ".env")
 
-config = Config(env_path)
 
-OPENAI_API_KEY = config("OPENAI_API_KEY")
 open_ai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ------- email generation -------
