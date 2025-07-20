@@ -9,3 +9,11 @@ services:
       - key: OPENAI_API_KEY
         sync: false
 
+  - type: web
+    name: email-assistant-chatbot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run Email_assistant.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
