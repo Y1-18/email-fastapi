@@ -26,7 +26,25 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    import openai
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        return {"status": "missing_api_key", "openai_available": False}
+
+    try:
+        openai.api_key = key
+        models = openai.models.list()
+        return {
+            "status": "healthy",
+            "openai_available": True,
+            "first_model": models.data[0].id if models.data else None
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "openai_available": False,
+            "error": str(e)
+        }
 
 # __init__.py
 # (This file should be empty as mentioned in the tutorial)
