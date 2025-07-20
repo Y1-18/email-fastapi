@@ -1,3 +1,4 @@
+# main.py - Fixed for Railway deployment
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
@@ -14,47 +15,50 @@ from openai import OpenAI
 # Initialize FastAPI app
 app = FastAPI(title="Email Assistant API", version="1.0.0")
 
-# Enable CORS for Streamlit or other frontend clients
+# RAILWAY FIX: Enable CORS for Railway domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update to your frontend URL in production
+    allow_origins=["*"],  # Railway needs this for cross-origin requests
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize OpenAI client (NEW WAY)
+# RAILWAY FIX: Initialize OpenAI client with better error handling
 openai_client = None
 try:
     api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
+    if api_key and api_key.startswith("sk-"):
         openai_client = OpenAI(api_key=api_key)
         print("✅ OpenAI client initialized successfully")
     else:
-        print("❌ OPENAI_API_KEY not found in environment variables")
+        print("❌ Invalid or missing OPENAI_API_KEY")
 except Exception as e:
     print(f"❌ OpenAI initialization error: {e}")
 
-# Email sending configuration via SMTP
+# Email configuration (optional for Railway)
 email_conf = None
 fm = None
 try:
-    email_conf = ConnectionConfig(
-        MAIL_USERNAME=os.getenv("MAIL_USERNAME", ""),
-        MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", ""),
-        MAIL_FROM=os.getenv("MAIL_FROM", ""),
-        MAIL_PORT=int(os.getenv("MAIL_PORT", "587")),
-        MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
-        MAIL_FROM_NAME=os.getenv("MAIL_FROM_NAME", "Email Assistant"),
-        MAIL_STARTTLS=True,
-        MAIL_SSL_TLS=False,
-        USE_CREDENTIALS=True,
-        VALIDATE_CERTS=True,
-    )
-    fm = FastMail(email_conf)
-    print("✅ Email configuration initialized")
+    if all([os.getenv("MAIL_USERNAME"), os.getenv("MAIL_PASSWORD"), os.getenv("MAIL_FROM")]):
+        email_conf = ConnectionConfig(
+            MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
+            MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
+            MAIL_FROM=os.getenv("MAIL_FROM"),
+            MAIL_PORT=int(os.getenv("MAIL_PORT", "587")),
+            MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
+            MAIL_FROM_NAME=os.getenv("MAIL_FROM_NAME", "Email Assistant"),
+            MAIL_STARTTLS=True,
+            MAIL_SSL_TLS=False,
+            USE_CREDENTIALS=True,
+            VALIDATE_CERTS=True,
+        )
+        fm = FastMail(email_conf)
+        print("✅ Email configuration initialized")
+    else:
+        print("⚠️ Email configuration skipped - missing environment variables")
 except Exception as e:
-    print(f"⚠️ Email configuration warning: {e}")
+    print(f"⚠️ Email configuration error: {e}")
 
 # Pydantic models
 class ChatMessage(BaseModel):
@@ -89,24 +93,45 @@ class EmailSendResponse(BaseModel):
     success: bool
     message: str
 
-# Health check endpoint - FIXED
+# RAILWAY FIX: Root endpoint for Railway health checks
+@app.get("/")
+async def root():
+    return {
+        "message": "Email Assistant API is running on Railway",
+        "status": "healthy",
+        "deployment": "railway",
+        "services": {
+            "openai": openai_client is not None,
+            "email": fm is not None
+        }
+    }
+
+# Health check endpoint - Railway compatible
 @app.get("/health")
 async def health_check():
-    """Health check with service status"""
-    status = {
+    """Health check endpoint for Railway"""
+    return {
         "status": "healthy",
         "service": "Email Assistant API",
+        "platform": "railway",
         "openai_available": openai_client is not None,
         "email_configured": fm is not None,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment_vars": {
+            "OPENAI_API_KEY": "set" if os.getenv("OPENAI_API_KEY") else "missing",
+            "PORT": os.getenv("PORT", "not_set"),
+            "RAILWAY_ENVIRONMENT": os.getenv("RAILWAY_ENVIRONMENT", "not_railway")
+        }
     }
-    return status
 
-# Chat endpoint with OpenAI integration - FIXED
+# Chat endpoint with OpenAI integration
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_ai(chat_request: ChatMessage):
     if not openai_client:
-        raise HTTPException(status_code=503, detail="OpenAI service not available. Check API key configuration.")
+        raise HTTPException(
+            status_code=503, 
+            detail="OpenAI service not available. Please check OPENAI_API_KEY environment variable in Railway."
+        )
     
     try:
         messages = [
@@ -125,7 +150,7 @@ If asked to write an email, ask for specific details like recipient, purpose, an
             }
         ]
 
-        # Append last 10 conversation history messages
+        # Append conversation history (last 10 messages)
         for msg in chat_request.conversation_history[-10:]:
             messages.append({
                 "role": msg.get("role", "user"),
@@ -135,7 +160,7 @@ If asked to write an email, ask for specific details like recipient, purpose, an
         # Append current user message
         messages.append({"role": "user", "content": chat_request.message})
 
-        # FIXED: Use new OpenAI client syntax
+        # Use new OpenAI client syntax
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=messages,
@@ -147,14 +172,19 @@ If asked to write an email, ask for specific details like recipient, purpose, an
         tokens_used = response.usage.total_tokens
 
         return ChatResponse(response=ai_response, tokens_used=tokens_used)
+    
     except Exception as e:
+        print(f"Chat error: {str(e)}")  # Railway logs
         raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
 
-# Email generation endpoint - FIXED
+# Email generation endpoint
 @app.post("/generate-email", response_model=EmailResponse)
 async def generate_email(request: EmailGenerationRequest):
     if not openai_client:
-        raise HTTPException(status_code=503, detail="OpenAI service not available. Check API key configuration.")
+        raise HTTPException(
+            status_code=503, 
+            detail="OpenAI service not available. Please check OPENAI_API_KEY environment variable."
+        )
     
     try:
         prompt = f"""
@@ -168,11 +198,10 @@ Context: {request.context}
 Return a JSON object with fields "subject" and "body".
 """
 
-        # FIXED: Use new OpenAI client syntax
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a professional email writing assistant."},
+                {"role": "system", "content": "You are a professional email writing assistant. Return valid JSON only."},
                 {"role": "user", "content": prompt},
             ],
             max_tokens=800,
@@ -181,13 +210,19 @@ Return a JSON object with fields "subject" and "body".
 
         ai_response = response.choices[0].message.content.strip()
 
-        # Parse AI response as JSON for subject and body
+        # Parse AI response as JSON
         try:
+            # Clean response if it has markdown code blocks
+            if "```json" in ai_response:
+                ai_response = ai_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in ai_response:
+                ai_response = ai_response.split("```")[1].strip()
+            
             email_json = json.loads(ai_response)
             subject = email_json.get("subject", "")
             body = email_json.get("body", "")
         except json.JSONDecodeError:
-            # Fallback if AI does not respond with JSON
+            # Fallback if AI doesn't return valid JSON
             subject = f"{request.email_type.replace('_', ' ').title()} - {request.recipient_name}"
             body = ai_response
 
@@ -197,16 +232,18 @@ Return a JSON object with fields "subject" and "body".
             email_type=request.email_type,
             generated_at=datetime.utcnow().isoformat() + "Z",
         )
+    
     except Exception as e:
+        print(f"Email generation error: {str(e)}")  # Railway logs
         raise HTTPException(status_code=500, detail=f"Email generation error: {str(e)}")
 
-# Email sending endpoint - IMPROVED ERROR HANDLING
+# Email sending endpoint
 @app.post("/send-email", response_model=EmailSendResponse)
 async def send_email(request: EmailSendRequest):
     if not fm:
         return EmailSendResponse(
             success=False,
-            message="Email service not configured. Check email environment variables.",
+            message="Email service not configured. Set MAIL_USERNAME, MAIL_PASSWORD, and MAIL_FROM environment variables.",
         )
     
     try:
@@ -218,12 +255,12 @@ async def send_email(request: EmailSendRequest):
         )
 
         await fm.send_message(message)
-
         return EmailSendResponse(
             success=True,
             message=f"Email sent successfully to {request.to_email}",
         )
     except Exception as e:
+        print(f"Email sending error: {str(e)}")  # Railway logs
         return EmailSendResponse(
             success=False,
             message=f"Failed to send email: {str(e)}",
@@ -276,7 +313,7 @@ async def get_email_templates():
     }
     return templates
 
-# Email stats endpoint (mock data)
+# Email stats endpoint
 @app.get("/email-stats")
 async def get_email_stats():
     return {
@@ -287,10 +324,11 @@ async def get_email_stats():
         "services_available": {
             "openai": openai_client is not None,
             "email": fm is not None
-        }
+        },
+        "deployment": "railway"
     }
 
-# WebSocket chat endpoint for real-time interaction - FIXED
+# WebSocket for real-time chat (Railway compatible)
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -304,7 +342,11 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+        try:
+            await websocket.send_text(message)
+        except:
+            # Remove disconnected websocket
+            self.disconnect(websocket)
 
 manager = ConnectionManager()
 
@@ -322,7 +364,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 continue
             
-            # FIXED: Use new OpenAI client syntax
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -330,38 +371,47 @@ async def websocket_endpoint(websocket: WebSocket):
                     {"role": "user", "content": data},
                 ],
                 max_tokens=500,
+                temperature=0.7,
             )
             ai_response = response.choices[0].message.content
             await manager.send_personal_message(ai_response, websocket)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        await manager.send_personal_message(f"Error: {str(e)}", websocket)
+        print(f"WebSocket error: {str(e)}")  # Railway logs
+        manager.disconnect(websocket)
 
-# Startup event to check configuration
+# Railway startup event
 @app.on_event("startup")
 async def startup_event():
-    print("🚀 Starting Email Assistant API...")
-    print(f"✅ FastAPI server starting")
+    print("🚀 Starting Email Assistant API on Railway...")
+    print(f"Environment: {os.getenv('RAILWAY_ENVIRONMENT', 'unknown')}")
+    print(f"Port: {os.getenv('PORT', 'not_set')}")
     
-    # Check OpenAI configuration
+    # Check OpenAI
     if openai_client:
         try:
-            # Test OpenAI connection
             models = openai_client.models.list()
             print("✅ OpenAI connection verified")
         except Exception as e:
-            print(f"❌ OpenAI connection test failed: {e}")
+            print(f"❌ OpenAI connection failed: {e}")
     else:
-        print("❌ OpenAI not configured - set OPENAI_API_KEY environment variable")
+        print("❌ OpenAI not configured")
     
-    # Check email configuration
+    # Check email
     if fm:
         print("✅ Email service configured")
     else:
-        print("⚠️ Email service not configured - email sending will be disabled")
+        print("⚠️ Email service not configured")
 
-# Run with `uvicorn main:app --host 0.0.0.0 --port 8000` or via Railway start command
+# RAILWAY FIX: Proper port binding
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))  # Railway provides PORT env var
+    print(f"Starting server on port {port}")
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0", 
+        port=port,
+        log_level="info"
+    )
