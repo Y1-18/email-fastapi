@@ -1,19 +1,24 @@
 import os
 from datetime import datetime
 from typing import List
-
 from starlette.config import Config
 from openai import OpenAI
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio.session import AsyncSession
-
 from database import get_session
 from crud import crud_email_logs
 from schema import EmailRequest, EmailResponse, EmailLogCreate, EmailLogRead
 
+# Fix: Get the API key from environment variables
 current_file_dir = os.path.dirname(os.path.realpath(__file__))
 env_path = os.path.join(current_file_dir, ".env")
 
+# Load environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Initialize OpenAI client with error handling
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is not set. Please add it to your Render environment variables.")
 
 open_ai_client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -39,7 +44,7 @@ async def generate_email(
         - Include all relevant information provided by the user
         - Format the email properly with paragraphs and structure
         """
-
+        
         # Determine max tokens based on length
         length_tokens = {
             "short": 200,
@@ -47,7 +52,7 @@ async def generate_email(
             "long": 600
         }
         max_tokens = length_tokens.get(request.length, 400)
-
+        
         # Build the prompt with all inputs
         prompt_parts = [
             f"Write an email based on the following requirements:",
@@ -65,7 +70,7 @@ async def generate_email(
         prompt_parts.append("\nPlease generate a complete email including subject line, greeting, body, and appropriate closing.")
         
         prompt = "\n".join(prompt_parts)
-
+        
         # Getting the response from the model      
         response = open_ai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -78,7 +83,7 @@ async def generate_email(
         )
        
         generated_email = response.choices[0].message.content.strip()
-
+        
         # Creating logs in the database
         log_entry = EmailLogCreate(
             user_input=request.user_input,
@@ -90,9 +95,9 @@ async def generate_email(
             created_at=datetime.utcnow()
         )
         await crud_email_logs.create(db, log_entry)
-
+        
         return EmailResponse(generated_email=generated_email)
-
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating email: {str(e)}")
 
