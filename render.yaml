@@ -6,6 +6,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host=0.0.0.0 --port=$PORT
     envVars:
-      - key: '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'
+      - key: OPENAI_API_KEY
         sync: false
 
