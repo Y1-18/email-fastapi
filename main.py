@@ -18,14 +18,12 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     yield
 
-# ✅ Initialize FastAPI app with lifespan handler
 app = FastAPI(lifespan=lifespan)
 
-# ✅ Add routes
+
 app.include_router(email_router, prefix="/generate", tags=["Email"])
 app.include_router(log_router, prefix="/logs", tags=["Logs"])
 
-# ✅ Add working /health endpoint for Railway
 @app.get("/health")
 async def health_check():
     return JSONResponse(content={"status": "healthy"})
