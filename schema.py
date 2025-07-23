@@ -1,34 +1,35 @@
 from datetime import datetime
 from typing import Optional
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, Field
+
 
 # ------- email log -------
 class EmailLogCreate(SQLModel):
     user_input: str
+    reply_to: Optional[str] = None
     context: Optional[str] = None
-    response_to: Optional[str] = None
-    length: Optional[str] = "medium"
-    tone: Optional[str] = "formal"
+    length: Optional[int] = None
+    tone: Optional[str] = None
     generated_email: str
-    created_at: Optional[datetime] = None
+
 
 class EmailLogRead(SQLModel):
-    id: int
     user_input: str
+    reply_to: Optional[str]
     context: Optional[str]
-    response_to: Optional[str]
-    length: str
-    tone: str
+    length: Optional[int]
+    tone: Optional[str]
     generated_email: str
-    created_at: datetime
 
 # ------- email -------
 class EmailRequest(SQLModel):
     user_input: str
+    reply_to: Optional[str] = None
     context: Optional[str] = None
-    response_to: Optional[str] = None
-    length: Optional[str] = "medium"  # short, medium, long
-    tone: Optional[str] = "formal"    # formal, casual, relaxed
+    length: int = 120
+    tone: str = "formal"
 
 class EmailResponse(SQLModel):
     generated_email: str
+
+
