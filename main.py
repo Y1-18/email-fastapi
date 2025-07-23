@@ -13,3 +13,5 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+app = FastAPI(docs_url=None, redoc_url=None)  # Disable docs in production
